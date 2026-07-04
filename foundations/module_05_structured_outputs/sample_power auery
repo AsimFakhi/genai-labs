@@ -1,0 +1,12 @@
+let
+    Source = Snowflake.Databases(
+        "xy12345.us-east-1.snowflakecomputing.com",
+        "COMPUTE_WH"
+    ),
+    Database = Source{[Name="SALES_DB"]}[Data],
+    Schema = Database{[Name="PUBLIC"]}[Data],
+    Table = Schema{[Name="CUSTOMERS"]}[Data]
+    Role=RL_TEAM_AUTO
+in
+    Table
+END
