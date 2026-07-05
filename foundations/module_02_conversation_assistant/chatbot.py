@@ -22,7 +22,7 @@ console.print(
         Align.center(
             "[bold cyan]Asim's AI Assistant[/bold cyan]\n"
             f"[bold]Provider[/bold] : OpenRouter\n"
-            f"[bold]Model[/bold]    : {settings.nv_gpt_120}",
+            f"[bold]Model[/bold]    : {settings.nv_nemotron_ultra}",
             vertical="middle",
         ),
         width=panel_width,
@@ -55,7 +55,7 @@ while True:
 
     # Send the full conversation history
     response = client.responses.create(
-        model=settings.nv_gpt_120,
+        model=settings.nv_nemotron_ultra,
         input=conversation,
     )
 
