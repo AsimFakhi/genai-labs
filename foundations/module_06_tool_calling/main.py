@@ -4,9 +4,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.align import Align
 from pprint import pprint
+import json
 
 from shared.settings import get_settings
 from foundations.module_06_tool_calling.prompts import SYSTEM_PROMPT
+from foundations.module_06_tool_calling.tools import TOOLS, TOOLS_MAP
+
 
 settings = get_settings()
 console = Console()
@@ -20,54 +23,81 @@ MODEL = settings.gpt_nano
 
 # Header
 def print_header():
+    terminal_width = console.size.width
     console.print(
         Panel(
             Align.center(
                 "[bold cyan] Module 06 - Tool Calling[/bold cyan]\n"
                 f"Model : {MODEL}"
-            )
+            ),width=terminal_width-4
         )
     )
 
-# Actual DB Schema
-# The LLM never sees this code.
-# It only sees the tool description.
-def get_database_schema():
+# ------------------------------------------------------------------
+# Tool Execution
+# ------------------------------------------------------------------
+def handle_tool_calls(response):
     """
-    Returns the database schema.
+    Execute every tool requested by the model.
+    Parameters
+    ----------
+    response
+        The response object returned by OpenAI
+
+    Returns
+    -----------
+    Response 
+        Final response after tool execution
     """
-    return """
-    Table:
-    costomers
-    accounts
-    transactions
-    merchants
-    transaction_types
-
-    Relationships
-
-    customer.customer_id -> accounts.customer_id
-
-    accounts.account_id -> transaction.account_id
+    # Find every tool call inside the response
+    function_calls = [
+        item
+         for item in response.output
+         if item.type == "function_call"
+    ]
+    # console.print("-"*80)
+    # console.print(f"\n[bold medium_orchid1]Funtions call returned by LLM:> \n[/bold medium_orchid1]")
+    # pprint(function_calls)
+    if not function_calls:
+        return response
     
-    merchant.merchat_id -> transaction.merchant_id
+    # ── Phase 1: Execute ALL tools ─────────────────────────
+    tool_outputs = []
+    for call in function_calls:
+        console.print(f"\n[yellow bold]Calling Tool :> [/yellow bold]{call.name}")
+        # Find matching python fucntion
+        tool =TOOLS_MAP.get(call.name)
 
-    transaction_types.transaction_type_id -> transaction.transaction_type_id
-"""
+        if tool is None:
+            console.print(f"[red]unknown tool : {call.name}[/red]")
+            continue
 
-# Register Tool
-TOOLS = [
-    {
-        "type": "function",
-        "name": "get_database_schema",
-        "description": "Returns the SQLite database schema including tables and relationships.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    }
-]
+        # Converts JSON to python dict
+        arguments = json.loads(call.arguments)
+        # xecute tool.
+        result = tool(**arguments)
+        console.print("-"*80,{result},"-"*80, sep="\n")
+        tool_outputs.append(
+            {
+                "type":"function_call_output", 
+                "call_id":call.call_id, 
+                "output":result
+            }
+        )
+        # pprint(f"Tools Output :>\n {tool_outputs}")
+    # ── Phase 2: Send ALL results back at once to the LLM ─────────────
+    final_response = client.responses.create(
+        model=MODEL,
+        previous_response_id=response.id,
+        input=tool_outputs
+    )
+    return final_response
+
+
+# ------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------
+
 
 def main():
     print_header()
@@ -76,48 +106,37 @@ def main():
         if question.lower() in ("exit", "quit", "cls"):
             break
 
-
         response = client.responses.create(
             model=MODEL,
             input=[
-                {"role":"system", "content": SYSTEM_PROMPT},
-                {"role":"user", "content": question}
+                {"role":"system", "content":SYSTEM_PROMPT},
+                {"role": "user", "content":question}
             ],
             tools=TOOLS
         )
+        console.print(f"[yellow bold]First Response :>[/yellow bold]\n\n")
+        pprint(response.model_dump())
+        # for item in response.output:
+        #     print("\n\n",item)
+        
+        # Execute requested tools.
+        final_response = handle_tool_calls(response)
+        usage = final_response.usage
+        console.print()
+        console.print(
+            f"[bold cyan]AI > {final_response.output_text}[/bold cyan]\n"
+        )
 
-        console.rule("Raw Response")
-        console.print(response.model_dump())
-
-        function_calls = [
-            item 
-            for item in response.output
-            if item.type == "function_call"
-        ]
-
-        if not function_calls:
-            console.print(f"\n[bold green]AI > {response.output_text}[/bold green]")
-            continue
-
-        for call in function_calls:
-            if call.name == "get_database_schema":
-                tool_result = get_database_schema()
-                final_response = client.responses.create(
-                    model=MODEL,
-                    previous_response_id = response.id,
-                    input=[
-                        {
-                            "type":"function_call_output", 
-                            "call_id":call.call_id, 
-                            "output":tool_result
-                        }
-                    ],
-                )
-
-                console.print("\n")
-                console.print(
-    f"[bold green]AI > {final_response.output_text}[/bold green]"
-)
+        console.print(
+            # Panel(
+                Align.center("[bold yellow]Token Usage"
+                    f"[bold yellow]Input Tokens > {usage.input_tokens} "
+                    f"|| Output Tokens > {usage.output_tokens} "
+                    f"|| Total Tokens > {usage.total_tokens}[/bold yellow]"
+                    ), style="yellow"
+            # )
+        )
 
 if __name__ == "__main__":
+
     main()
