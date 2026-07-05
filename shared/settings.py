@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     nv_gpt_20:str
     nv_gpt_120:str
 
+    or_test:str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
